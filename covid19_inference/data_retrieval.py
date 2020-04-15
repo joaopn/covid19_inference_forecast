@@ -6,6 +6,9 @@ import pandas as pd
 
 import urllib, json
 
+_format_date = lambda date_py: "{}/{}/{}".format(
+    date_py.month, date_py.day, str(date_py.year)[2:4]
+)
 
 def _jhu_to_iso(fp_csv:str) -> pd.DataFrame:
     """Convert Johns Hopkins University dataset to nicely formatted DataFrame.
@@ -305,6 +308,23 @@ def filter_rki_all_bundesland(df, begin_date, end_date, variable = 'AnzahlFall')
     #Returns cumsum of variable
     return df2[begin_date:end_date].cumsum()
 
-_format_date = lambda date_py: "{}/{}/{}".format(
-    date_py.month, date_py.day, str(date_py.year)[2:4]
-)
+def get_mobility_reports_apple(value, transportation_list, path_data = 'data/applemobilitytrends-2020-04-13.csv'):
+
+    if not all(elem in ['walking', 'driving', 'transit']  for elem in transportation_list):
+        raise ValueError('transportation_type contains elements outside of ["walking", "driving", "transit"]')
+
+    # if transportation_type not in ['walking', 'driving', 'transit']:
+    #     raise ValueError('Invalid value. Valid options: "walking", "driving", "transit"')
+
+    df = pd.read_csv(path_data)
+
+    series_list = []
+    for transport in transportation_list:
+        series_list.append(df[(df['region']==value) & (df['transportation_type']==transport)].iloc[0][3:].rename(transport))
+
+    df2 = pd.concat(series_list,axis=1)
+
+    df2.index = df2.index.map(datetime.datetime.fromisoformat)
+
+    return df2
+    
