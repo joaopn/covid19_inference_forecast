@@ -206,3 +206,125 @@ def plot_cases(trace, new_cases_obs, date_begin_sim, diff_data_sim, start_date_p
     plt.subplots_adjust(wspace=0.4, hspace=.3)
 
     return fig, axes
+
+def plot_compact(model, trace, lambda_prior, new_cases_obs, date_data_begin, diff_data_sim=16, start_date_plot=None, end_date_plot=None, ylim=None, week_interval=None, colors = ('tab:blue', 'tab:orange')):
+
+    def conv_time_to_mpl_dates(arr):
+        return matplotlib.dates.date2num([datetime.timedelta(days=float(date)) + date_begin_sim for date in arr])
+
+    #Sets up figure geometry
+    len_A = 4
+    len_B = 3
+
+    fig = plt.figure(figsize=(12,8))
+    gs = fig.add_gridspec(3*len_A,2*len_A+len_B)    
+
+    ax_lambda = fig.add_subplot(gs[0:len_A,0:2*len_A])
+    ax_cases = fig.add_subplot(gs[len_A:3*len_A,0:2*len_A])
+    ax_I_begin = fig.add_subplot(gs[0:len_B,2*len_A:2*len_A+len_B])
+    ax_delay = fig.add_subplot(gs[len_B:2*len_B,2*len_A:2*len_A+len_B])
+    ax_mu = fig.add_subplot(gs[2*len_B:3*len_B,2*len_A:2*len_A+len_B])
+    ax_sigma_obs = fig.add_subplot(gs[3*len_B:4*len_B,2*len_A:2*len_A+len_B])
+
+    #Sets variables
+    new_cases_sim = trace['new_cases']
+
+    date_begin_sim = date_data_begin - datetime.timedelta(days = diff_data_sim)
+
+    len_sim = trace['lambda_t'].shape[1]
+    if start_date_plot is None:
+        start_date_plot = date_begin_sim + datetime.timedelta(days=diff_data_sim)
+    if end_date_plot is None:
+        end_date_plot = date_begin_sim + datetime.timedelta(days=len_sim)
+    if ylim is None:
+        ylim = 1.6*np.max(new_cases_obs)
+
+    num_days_data = len(new_cases_obs)
+    diff_to_0 = num_days_data + diff_data_sim
+    date_data_end = date_begin_sim + datetime.timedelta(days=diff_data_sim + num_days_data)
+    num_days_future = (end_date_plot - date_data_end).days
+    start_date_mpl, end_date_mpl = matplotlib.dates.date2num([start_date_plot, end_date_plot])
+    week_inter_left = int(np.ceil(num_days_data/7/5))
+    week_inter_right = int(np.ceil((end_date_mpl - start_date_mpl)/7/6))
+
+    #Plots lambda
+    ax = ax_lambda
+
+    new_cases_sim = trace['new_cases']
+    len_sim = trace['lambda_t'].shape[1]    
+
+    time = np.arange(-diff_to_0 , -diff_to_0 + len_sim )
+    lambda_t = trace['lambda_t'][:, :]
+    μ = trace['mu'][:, None]
+    mpl_dates = conv_time_to_mpl_dates(time) + diff_data_sim + num_days_data
+
+    ax.plot(mpl_dates, np.median(lambda_t - μ, axis=0), color=colors[1], linewidth=2, label=r'$\lambda^*$')
+    ax.fill_between(mpl_dates, np.percentile(lambda_t - μ, q=2.5, axis=0), np.percentile(lambda_t - μ, q=97.5, axis=0),
+                    alpha=0.15,
+                    color=colors[1])
+
+    #ax.plot(mpl_dates, lambda_prior)
+
+    #ax.set_ylabel('effective\ngrowth rate $\lambda_t^*$')
+
+    #ax.set_ylim(-0.15, 0.45)
+
+    ylims = ax.get_ylim()
+    ax.hlines(0, start_date_mpl, end_date_mpl, linestyles=':')
+    delay = matplotlib.dates.date2num(date_data_end) - np.percentile(trace['delay'], q=75)
+    ax.vlines(delay, ylims[0], ylims[1], linestyles='-', colors=['tab:red'])
+    ax.set_ylim(*ylims)
+    ax.text(delay + 0.5, ylims[1] - 0.04*np.diff(ylims), 'unconstrained because\nof reporting delay', color='tab:red', verticalalignment='top')
+    ax.text(delay - 0.5, ylims[1] - 0.04*np.diff(ylims), 'constrained\nby data', color='tab:red', horizontalalignment='right',
+            verticalalignment='top')
+    ax.xaxis.set_major_locator(matplotlib.dates.WeekdayLocator(interval = week_inter_right, byweekday=matplotlib.dates.SU))
+    ax.xaxis.set_minor_locator(matplotlib.dates.DayLocator())
+    ax.xaxis.set_major_formatter(matplotlib.dates.DateFormatter('%m/%d'))
+    ax.set_xlim(start_date_mpl, end_date_mpl)
+
+
+    #Plots new cases
+    ax = ax_cases
+
+    time1 = np.arange(-len(new_cases_obs) , 0)
+    mpl_dates = conv_time_to_mpl_dates(time1) + diff_data_sim + num_days_data
+    ax.plot(mpl_dates, new_cases_obs, 'd', label='Data', markersize=4, color=colors[0],
+            zorder=5)
+
+    new_cases_past = new_cases_sim[:, :num_days_data]
+    ax.plot(mpl_dates, np.median(new_cases_past, axis=0), '--', color=colors[1], linewidth=1.5, label='Fit with 95% CI')
+    percentiles = np.percentile(new_cases_past, q=2.5, axis=0), np.percentile(new_cases_past, q=97.5, axis=0)
+    ax.fill_between(mpl_dates, percentiles[0], percentiles[1], alpha=0.2, color=colors[1])
+
+    time2 = np.arange(0, num_days_future)
+    mpl_dates_fut = conv_time_to_mpl_dates(time2) + diff_data_sim + num_days_data
+    cases_future = new_cases_sim[:, num_days_data:num_days_data+num_days_future].T
+    median_cases = np.median(cases_future, axis=-1)
+    percentiles = (
+        np.percentile(cases_future, q=2.5, axis=-1),
+        np.percentile(cases_future, q=97.5, axis=-1),
+    )
+    ax.plot(mpl_dates_fut, median_cases, color=colors[1], linewidth=3, label='forecast with 75% and 95% CI')
+    ax.fill_between(mpl_dates_fut, percentiles[0], percentiles[1], alpha=0.1, color=colors[1])
+    ax.fill_between(mpl_dates_fut, np.percentile(cases_future, q=12.5, axis=-1),
+                    np.percentile(cases_future, q=87.5, axis=-1),
+                    alpha=0.2, color=colors[1])
+
+    ax.set_xlabel('Date')
+    ax.set_ylabel(f'New confirmed cases')
+    ax.legend(loc='upper left')
+    ax.set_ylim(0, ylim)
+    func_format = lambda num, _: "${:.0f}\,$k".format(num / 1_000)
+    ax.yaxis.set_major_formatter(matplotlib.ticker.FuncFormatter(func_format))
+    ax.set_xlim(start_date_mpl, end_date_mpl)
+    ax.xaxis.set_major_locator(matplotlib.dates.WeekdayLocator(interval = week_inter_right, byweekday=matplotlib.dates.SU))
+    ax.xaxis.set_minor_locator(matplotlib.dates.DayLocator())
+    ax.xaxis.set_major_formatter(matplotlib.dates.DateFormatter('%m/%d'))
+
+    #Plots the parameters
+    plot_hist(model, trace, ax_I_begin, 'I_begin', colors=("#708090", "tab:orange"), bins=50)
+    plot_hist(model, trace, ax_delay, 'delay', colors=("#708090", "tab:orange"), bins=50)
+    plot_hist(model, trace, ax_mu, 'mu', colors=("#708090", "tab:orange"), bins=50)
+    plot_hist(model, trace, ax_sigma_obs, 'sigma_obs', colors=("#708090", "tab:orange"), bins=50)
+
+    plt.tight_layout()
