@@ -320,7 +320,8 @@ def get_mobility_reports_apple(value, transportation_list, path_data = 'data/app
 
     series_list = []
     for transport in transportation_list:
-        series_list.append(df[(df['region']==value) & (df['transportation_type']==transport)].iloc[0][3:].rename(transport))
+        series = df[(df['region']==value) & (df['transportation_type']==transport)].iloc[0][3:].rename(transport)
+        series_list.append(series/100)
 
     df2 = pd.concat(series_list,axis=1)
 
@@ -328,3 +329,26 @@ def get_mobility_reports_apple(value, transportation_list, path_data = 'data/app
 
     return df2
     
+def get_mobility_reports_google(region, field_list, subregion=False):
+
+    valid_fields = ['retail_and_recreation','grocery_and_pharmacy', 'parks', 'transit_stations', 'workplaces','residential']
+
+    if not all(elem in valid_fields  for elem in field_list):
+        raise ValueError('field_list contains invalid elements')
+
+
+    url = 'https://raw.githubusercontent.com/vitorbaptista/google-covid19-mobility-reports/master/data/processed/mobility_reports.csv'
+    df = pd.read_csv(url)
+
+    if subregion is not False:
+        series_df = df[(df['region']==region) & (df['subregion'] == subregion)]
+    else:
+        series_df = df[(df['region']==region) & (df['subregion'].isnull())]
+
+    series_df = series_df.set_index('updated_at')[field_list]
+    series_df.index.name = 'date'
+    series_df.index = series_df.index.map(datetime.datetime.fromisoformat)
+    series_df = series_df + 1
+
+    return series_df
+
